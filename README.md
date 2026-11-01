@@ -28,6 +28,15 @@ ASP.NET Core 10 API for cryptographically signed, single-use meal vouchers. It r
 
 The five routes already called by the mobile app (`create`, `list`, `signed`, `verify`, and `redeem`) retain its expected response shape.
 
+## Interactive API testing
+
+- Local Swagger UI: `http://localhost:5203/swagger`
+- Deployed Swagger UI: `https://mealseal-api.onrender.com/swagger`
+- Import `docs/MealSeal.postman_collection.json` into Postman for Firebase sign-in and the complete admin/staff voucher workflow.
+- See `docs/POSTMAN.md` for setup and the recommended test order.
+
+Protected endpoints use a short-lived Firebase ID token. Swagger's **Authorize** dialog expects only the token and adds the `Bearer` prefix. The repository and Postman collection intentionally contain no test passwords, Firebase tokens, service-account credentials, database URLs, or private signing keys.
+
 ## Local setup
 
 Requirements: .NET 10 SDK, PostgreSQL, and either JetBrains Rider or VS Code with C# Dev Kit.

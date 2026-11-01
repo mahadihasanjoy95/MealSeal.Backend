@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,7 +37,24 @@ builder.Services.AddScoped<VoucherService>();
 builder.Services.AddAuthentication("Firebase")
     .AddScheme<AuthenticationSchemeOptions, FirebaseAuthenticationHandler>("Firebase", _ => { });
 builder.Services.AddAuthorization();
-builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "MealSeal API",
+        Version = "v1",
+        Description = "Cryptographically signed, single-use meal vouchers. Protected operations require a Firebase ID token."
+    });
+    options.AddSecurityDefinition("FirebaseBearer", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "Firebase ID token",
+        Description = "Paste only the Firebase ID token. Swagger adds the 'Bearer' prefix automatically."
+    });
+    options.OperationFilter<FirebaseSecurityOperationFilter>();
+});
 
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
 {
@@ -70,7 +88,13 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
-if (app.Environment.IsDevelopment()) app.MapOpenApi();
+app.UseSwagger();
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "MealSeal API v1");
+    options.DocumentTitle = "MealSeal API";
+    options.DisplayRequestDuration();
+});
 app.MapMealSealEndpoints();
 
 if (!app.Environment.IsEnvironment("Testing"))

@@ -1,0 +1,196 @@
+{
+  "info": {
+    "_postman_id": "8f29e879-aef1-4c22-b0d7-b1896b68f808",
+    "name": "MealSeal API",
+    "description": "End-to-end MealSeal API checks using Firebase email/password sign-in. No credentials are stored in this collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://mealseal-api.onrender.com", "type": "string" },
+    { "key": "firebaseApiKey", "value": "", "type": "string" },
+    { "key": "adminEmail", "value": "", "type": "string" },
+    { "key": "adminPassword", "value": "", "type": "string" },
+    { "key": "staffEmail", "value": "", "type": "string" },
+    { "key": "staffPassword", "value": "", "type": "string" },
+    { "key": "adminToken", "value": "", "type": "string" },
+    { "key": "staffToken", "value": "", "type": "string" },
+    { "key": "voucherId", "value": "", "type": "string" },
+    { "key": "signedVoucher", "value": "", "type": "string" },
+    { "key": "expiryDate", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Health",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/health" }
+        },
+        {
+          "name": "Public key",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/public-key" }
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Sign in - admin",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('Firebase sign-in succeeded', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('adminToken', body.idToken);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\",\n  \"returnSecureToken\": true\n}" },
+            "url": "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebaseApiKey}}"
+          }
+        },
+        {
+          "name": "Admin profile",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/auth/me"
+          }
+        },
+        {
+          "name": "Sign in - staff",
+          "event": [{
+            "listen": "test",
+            "script": { "type": "text/javascript", "exec": [
+              "pm.test('Firebase sign-in succeeded', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('staffToken', body.idToken);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{staffEmail}}\",\n  \"password\": \"{{staffPassword}}\",\n  \"returnSecureToken\": true\n}" },
+            "url": "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{firebaseApiKey}}"
+          }
+        },
+        {
+          "name": "Staff profile",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{staffToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/auth/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin vouchers",
+      "item": [
+        {
+          "name": "Create voucher",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "type": "text/javascript", "exec": [
+                "const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);",
+                "pm.collectionVariables.set('expiryDate', expiry.toISOString().slice(0, 10));"
+              ]}
+            },
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": [
+                "pm.test('Voucher created', () => pm.response.to.have.status(200));",
+                "const signed = pm.response.json().signedVoucher;",
+                "pm.collectionVariables.set('signedVoucher', JSON.stringify(signed));",
+                "pm.collectionVariables.set('voucherId', signed.payload.voucherId);"
+              ]}
+            }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"recipientRef\": \"demo-recipient-001\",\n  \"restaurantId\": \"CAFE-01\",\n  \"mealType\": \"Lunch\",\n  \"quantity\": 1,\n  \"expiryDate\": \"{{expiryDate}}\"\n}" },
+            "url": "{{baseUrl}}/vouchers/create"
+          }
+        },
+        {
+          "name": "List vouchers",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/vouchers"
+          }
+        },
+        {
+          "name": "Get voucher",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/vouchers/{{voucherId}}"
+          }
+        },
+        {
+          "name": "Get signed voucher",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/vouchers/{{voucherId}}/signed"
+          }
+        },
+        {
+          "name": "Download QR PNG",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/vouchers/{{voucherId}}/qr"
+          }
+        },
+        {
+          "name": "Revoke voucher",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/vouchers/{{voucherId}}/revoke"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Staff vouchers",
+      "item": [
+        {
+          "name": "Verify voucher",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{staffToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"signedVoucher\": {{signedVoucher}}\n}" },
+            "url": "{{baseUrl}}/vouchers/verify"
+          }
+        },
+        {
+          "name": "Redeem voucher",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{staffToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"signedVoucher\": {{signedVoucher}}\n}" },
+            "url": "{{baseUrl}}/vouchers/redeem"
+          }
+        }
+      ]
+    }
+  ]
+}

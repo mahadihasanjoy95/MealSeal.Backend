@@ -3,6 +3,7 @@ services:
     name: mealseal-api
     runtime: docker
     plan: free
+    region: singapore
     dockerfilePath: ./MealSeal.Api/Dockerfile
     dockerContext: .
     healthCheckPath: /health

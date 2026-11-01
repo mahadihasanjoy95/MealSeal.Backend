@@ -28,9 +28,5 @@ services:
         sync: false
       - key: Seed__AdminPassword
         sync: false
-      - key: Seed__StaffEmail
-        sync: false
       - key: Seed__StaffPassword
-        sync: false
-      - key: Seed__StaffRestaurantId
         sync: false

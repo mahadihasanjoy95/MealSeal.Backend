@@ -6,6 +6,18 @@ namespace MealSeal.Api.Data;
 
 public static class DatabaseSeeder
 {
+    /// <summary>
+    /// The cafés café staff can sign in for — kept in lockstep with the mobile app's
+    /// create-voucher café picker (CAFE_OPTIONS in create-voucher.tsx) so every café an admin can
+    /// assign a voucher to also has a staff account able to redeem it.
+    /// </summary>
+    private static readonly (string Email, string RestaurantId)[] StaffAccounts =
+    [
+        ("hillside@mealseal.local", "CAFE-01"),
+        ("riverside@mealseal.local", "CAFE-02"),
+        ("corner@mealseal.local", "CAFE-03")
+    ];
+
     public static async Task SeedAsync(IServiceProvider services)
     {
         var db = services.GetRequiredService<MealSealDbContext>();
@@ -15,8 +27,11 @@ public static class DatabaseSeeder
         if (!string.IsNullOrWhiteSpace(seed.AdminEmail) && !string.IsNullOrWhiteSpace(seed.AdminPassword))
             await UpsertAsync(db, passwords, seed.AdminEmail, seed.AdminPassword, "CHARITY_ADMIN", null);
 
-        if (!string.IsNullOrWhiteSpace(seed.StaffEmail) && !string.IsNullOrWhiteSpace(seed.StaffPassword))
-            await UpsertAsync(db, passwords, seed.StaffEmail, seed.StaffPassword, "RESTAURANT_STAFF", seed.StaffRestaurantId);
+        if (!string.IsNullOrWhiteSpace(seed.StaffPassword))
+        {
+            foreach (var (email, restaurantId) in StaffAccounts)
+                await UpsertAsync(db, passwords, email, seed.StaffPassword, "RESTAURANT_STAFF", restaurantId);
+        }
 
         await db.SaveChangesAsync();
     }

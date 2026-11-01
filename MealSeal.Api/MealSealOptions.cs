@@ -28,11 +28,16 @@ public sealed class AuthOptions
     public string? PublicKeyPem { get; set; }
 }
 
+/// <summary>
+/// Bootstrap accounts, hashed into the database on startup. There's no self-registration and no
+/// café-management UI yet, so the café-staff accounts are a small static list — one per café the
+/// mobile app's create-voucher screen already offers — rather than something configured per
+/// account. All of them share <see cref="StaffPassword"/>; change it (and the admin's) via
+/// POST /auth/users/{userId}/reset-password once signed in, same as any other account.
+/// </summary>
 public sealed class SeedOptions
 {
     public string? AdminEmail { get; set; }
     public string? AdminPassword { get; set; }
-    public string? StaffEmail { get; set; }
     public string? StaffPassword { get; set; }
-    public string? StaffRestaurantId { get; set; }
 }

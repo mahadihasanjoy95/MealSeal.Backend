@@ -45,7 +45,7 @@ Protected endpoints use a short-lived MealSeal access token from `POST /auth/log
 Requirements: .NET 10 SDK, PostgreSQL, and either JetBrains Rider or VS Code with C# Dev Kit.
 
 1. Copy `.env.example` values into Rider Run Configuration environment variables (or export them in your shell).
-2. Pick a bootstrap admin (and optional staff) email/password in `Seed__AdminEmail`/`Seed__AdminPassword` (and `Seed__StaffEmail`/`Seed__StaffPassword`/`Seed__StaffRestaurantId`) — these are hashed into the database on first startup. Change the password afterward via `POST /auth/users/{userId}/reset-password`, signed in as that admin.
+2. Pick a bootstrap admin email/password in `Seed__AdminEmail`/`Seed__AdminPassword`. Set `Seed__StaffPassword` too and the three café-staff accounts in `DatabaseSeeder.StaffAccounts` (`hillside@`/`riverside@`/`corner@mealseal.local`, matching the mobile app's café picker) get seeded with that same password — leave it unset to skip seeding any café-staff accounts. All of this is hashed into the database on first startup; change a password afterward via `POST /auth/users/{userId}/reset-password`, signed in as the admin.
 3. Generate signing keys once (both the voucher-signing pair and the separate access-token-signing pair):
 
    ```sh

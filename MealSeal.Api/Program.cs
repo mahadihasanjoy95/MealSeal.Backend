@@ -34,9 +34,12 @@ var databaseConnections = PostgresConnectionStringResolver.Resolve(builder.Confi
 
 builder.Services.AddDbContext<MealSealDbContext>(options =>
     options.UseNpgsql(databaseConnections.Application));
-// Scoped (one ECDsa instance per request), matching VoucherCryptoService below — ECDsa isn't
-// guaranteed safe for concurrent use across requests from a single shared instance.
-builder.Services.AddScoped<AuthTokenService>();
+// Singleton: AuthTokenService only holds the (immutable) PEM text now, creating a fresh ECDsa
+// per call — see its comments. It's also captured by AccessTokenAuthenticationHandler's
+// constructor, and a Scoped service captured that way intermittently threw
+// ObjectDisposedException under real traffic (the handler can outlive a single request's scope);
+// Singleton removes that risk entirely rather than relying on getting the lifetime right.
+builder.Services.AddSingleton<AuthTokenService>();
 builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddScoped<VoucherCryptoService>();
 builder.Services.AddScoped<VoucherService>();

@@ -1,0 +1,13 @@
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      [
+        "build",
+        "-f",
+        "MealSeal.Api/Dockerfile",
+        "-t",
+        "australia-southeast1-docker.pkg.dev/mealseal/mealseal/mealseal-api",
+        "."
+      ]
+images:
+  - "australia-southeast1-docker.pkg.dev/mealseal/mealseal/mealseal-api"

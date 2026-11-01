@@ -1,4 +1,11 @@
 ﻿FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+# Npgsql's connection negotiation (triggered by `channel_binding=require` in the Neon connection
+# string) needs libgssapi, which this base image doesn't ship. Without it, opening a *new* pooled
+# connection throws, while a reused one works fine — that's what caused the intermittent
+# "every other request" 500s on /auth/login (and anything else that hits the database).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
 USER $APP_UID
 WORKDIR /app
 EXPOSE 8080

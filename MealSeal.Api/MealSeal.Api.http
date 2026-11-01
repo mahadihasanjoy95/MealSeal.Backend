@@ -1,0 +1,27 @@
+@baseUrl = http://localhost:5203
+@adminToken = replace-with-firebase-admin-id-token
+
+GET {{baseUrl}}/health
+Accept: application/json
+
+###
+GET {{baseUrl}}/public-key
+Accept: application/json
+
+###
+POST {{baseUrl}}/vouchers/create
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "recipientRef": "recipient-001",
+  "restaurantId": "restaurant-001",
+  "mealType": "Lunch",
+  "quantity": 1,
+  "expiryDate": "2026-12-31"
+}
+
+###
+GET {{baseUrl}}/vouchers
+Authorization: Bearer {{adminToken}}
+Accept: application/json

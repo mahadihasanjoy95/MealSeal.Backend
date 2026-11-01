@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: mealseal-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./MealSeal.Api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_URLS
+        value: http://+:8080
+      - key: ConnectionStrings__Postgres
+        sync: false
+      - key: Firebase__ProjectId
+        value: mealseal-c49a9
+      - key: Firebase__ServiceAccountJson
+        sync: false
+      - key: MealSeal__PrivateKeyPem
+        sync: false
+      - key: MealSeal__PublicKeyPem
+        sync: false
+      - key: Seed__AdminUid
+        sync: false
+      - key: Seed__StaffUid
+        sync: false
+      - key: Seed__StaffRestaurantId
+        sync: false

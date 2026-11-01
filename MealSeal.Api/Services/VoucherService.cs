@@ -1,8 +1,10 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using MealSeal.Api.Contracts;
 using MealSeal.Api.Data;
 using Microsoft.EntityFrameworkCore;
+using QRCoder;
 
 namespace MealSeal.Api.Services;
 
@@ -45,7 +47,8 @@ public sealed partial class VoucherService(MealSealDbContext db, VoucherCryptoSe
             PayloadSha256 = crypto.Sha256(payload),
             Signature = signed.Signature,
             Algorithm = signed.Algorithm,
-            KeyId = signed.KeyId
+            KeyId = signed.KeyId,
+            QrPng = RenderQrPng(signed)
         });
         db.AuditEvents.Add(new AuditEvent { VoucherId = payload.VoucherId, ActorUid = actorUid, Action = "CREATE", Outcome = "SUCCESS" });
         await db.SaveChangesAsync(cancellationToken);
@@ -63,6 +66,24 @@ public sealed partial class VoucherService(MealSealDbContext db, VoucherCryptoSe
         var record = await db.Vouchers.AsNoTracking().SingleOrDefaultAsync(x => x.VoucherId == voucherId, cancellationToken)
                      ?? throw new ApiException(404, "NOT_FOUND", "Voucher was not found.");
         return ToSigned(record);
+    }
+
+    /// <summary>The voucher's QR code PNG, stored at creation time. Falls back to regenerating it
+    /// on the fly for any voucher created before the stored-QR column existed.</summary>
+    public async Task<byte[]> GetQrPngAsync(string voucherId, CancellationToken cancellationToken)
+    {
+        var record = await db.Vouchers.AsNoTracking().SingleOrDefaultAsync(x => x.VoucherId == voucherId, cancellationToken)
+                     ?? throw new ApiException(404, "NOT_FOUND", "Voucher was not found.");
+        return record.QrPng ?? RenderQrPng(ToSigned(record));
+    }
+
+    private static byte[] RenderQrPng(SignedVoucher signed)
+    {
+        var json = JsonSerializer.Serialize(signed, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        using var generator = new QRCodeGenerator();
+        using var data = generator.CreateQrCode(json, QRCodeGenerator.ECCLevel.Q);
+        using var png = new PngByteQRCode(data);
+        return png.GetGraphic(8);
     }
 
     public async Task<VoucherSummary> GetAsync(string voucherId, CancellationToken cancellationToken)

@@ -1,11 +1,9 @@
 using System.Security.Claims;
-using System.Text.Json;
 using MealSeal.Api.Contracts;
 using MealSeal.Api.Data;
 using MealSeal.Api.Services;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
-using QRCoder;
 
 namespace MealSeal.Api.Endpoints;
 
@@ -152,14 +150,10 @@ public static class MealSealEndpoints
 
         admin.MapGet("/{voucherId}/qr", async (string voucherId, VoucherService service, CancellationToken ct) =>
         {
-            var signed = await service.GetSignedAsync(voucherId, ct);
-            var json = JsonSerializer.Serialize(signed, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-            using var generator = new QRCodeGenerator();
-            using var data = generator.CreateQrCode(json, QRCodeGenerator.ECCLevel.Q);
-            using var png = new PngByteQRCode(data);
-            return Results.File(png.GetGraphic(8), "image/png", $"mealseal-{voucherId}.png");
+            var png = await service.GetQrPngAsync(voucherId, ct);
+            return Results.File(png, "image/png", $"mealseal-{voucherId}.png");
         }).WithName("DownloadVoucherQr")
-            .WithSummary("Download a voucher QR code as PNG")
+            .WithSummary("Download a voucher's stored QR code as PNG")
             .Produces(StatusCodes.Status200OK, contentType: "image/png");
 
         admin.MapPost("/{voucherId}/revoke", async (string voucherId, VoucherService service,

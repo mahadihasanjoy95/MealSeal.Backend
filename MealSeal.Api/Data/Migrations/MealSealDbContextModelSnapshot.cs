@@ -139,6 +139,9 @@ namespace MealSeal.Api.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<byte[]>("QrPng")
+                        .HasColumnType("bytea");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
 

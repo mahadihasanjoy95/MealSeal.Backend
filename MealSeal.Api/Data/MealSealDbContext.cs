@@ -35,6 +35,7 @@ public sealed class MealSealDbContext(DbContextOptions<MealSealDbContext> option
             entity.Property(x => x.Signature).HasMaxLength(256);
             entity.Property(x => x.PayloadSha256).HasMaxLength(64);
             entity.Property(x => x.PayloadJson).HasColumnType("text");
+            entity.Property(x => x.QrPng).HasColumnType("bytea");
             entity.HasIndex(x => new { x.Status, x.ExpiresAt });
         });
         modelBuilder.Entity<AuditEvent>(entity =>
@@ -81,6 +82,10 @@ public sealed class VoucherRecord
     public DateTimeOffset? RedeemedAt { get; set; }
     public string? RevokedByUid { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
+
+    /// <summary>The voucher's QR code, rendered once at creation time and stored so it never needs
+    /// to be regenerated. Nullable only because vouchers created before this column existed have none.</summary>
+    public byte[]? QrPng { get; set; }
 }
 
 public sealed class AuditEvent

@@ -7,10 +7,13 @@ public sealed class MealSealDbContextFactory : IDesignTimeDbContextFactory<MealS
 {
     public MealSealDbContext CreateDbContext(string[] args)
     {
-        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Postgres")
+        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__PostgresMigration")
+                               ?? Environment.GetEnvironmentVariable("DATABASE_URL_UNPOOLED")
+                               ?? Environment.GetEnvironmentVariable("ConnectionStrings__Postgres")
+                               ?? Environment.GetEnvironmentVariable("DATABASE_URL")
                                ?? "Host=localhost;Database=mealseal";
         var options = new DbContextOptionsBuilder<MealSealDbContext>()
-            .UseNpgsql(connectionString)
+            .UseNpgsql(PostgresConnectionStringResolver.Normalize(connectionString))
             .Options;
         return new MealSealDbContext(options);
     }

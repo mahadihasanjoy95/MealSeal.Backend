@@ -11,7 +11,9 @@ services:
         value: Production
       - key: ASPNETCORE_URLS
         value: http://+:8080
-      - key: ConnectionStrings__Postgres
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
         sync: false
       - key: Firebase__ProjectId
         value: mealseal-c49a9

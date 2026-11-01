@@ -7,3 +7,4 @@ riderModule.iml
 .env
 keys/
 firebase-service-account.json
+.neon

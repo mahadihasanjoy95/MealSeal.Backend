@@ -55,15 +55,18 @@ Run verification with `dotnet test MealSeal.Backend.sln`.
 
 ## Free deployment: Neon + Render
 
-1. Create a free Neon PostgreSQL project and copy its pooled connection string.
+1. Use the linked Neon project `MealSeal` (`muddy-feather-76535250`). Its `main` branch already contains the initial schema.
 2. Push this backend repository to GitHub.
 3. In Render, create a Blueprint from the repository. `render.yaml` defines a free Docker web service.
 4. Enter the secret environment variables requested by Render:
-   - `ConnectionStrings__Postgres`: Neon connection string.
+   - `DATABASE_URL`: Neon's pooled URL (hostname contains `-pooler`) for normal API traffic.
+   - `DATABASE_URL_UNPOOLED`: Neon's direct URL for EF Core migrations.
    - `Firebase__ServiceAccountJson`: complete Firebase service-account JSON.
    - `MealSeal__PrivateKeyPem` and `MealSeal__PublicKeyPem`: generated PEM values.
    - The three `Seed__...` user/restaurant values.
 5. Confirm `https://YOUR-SERVICE.onrender.com/health` returns `status: ok`.
+
+The API accepts Neon's native `postgresql://` URLs and converts them to Npgsql configuration internally. It also continues to accept `ConnectionStrings__Postgres` and `ConnectionStrings__PostgresMigration` in Npgsql keyword format. Never commit any of these values.
 
 Render's free web service sleeps after inactivity, so the first request can be slow. Neon is preferable to Render's free PostgreSQL because Render's free database expires after 30 days. Do not use SQLite on Render: its filesystem is ephemeral.
 

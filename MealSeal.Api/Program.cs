@@ -23,12 +23,13 @@ builder.Services.Configure<MealSealOptions>(builder.Configuration.GetSection("Me
 builder.Services.Configure<FirebaseOptions>(builder.Configuration.GetSection("Firebase"));
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection("Seed"));
 
-var connectionString = builder.Configuration.GetConnectionString("Postgres");
-if (string.IsNullOrWhiteSpace(connectionString) && !builder.Environment.IsEnvironment("Testing"))
-    throw new InvalidOperationException("ConnectionStrings:Postgres is required.");
+var testingFallback = builder.Environment.IsEnvironment("Testing")
+    ? "Host=localhost;Database=mealseal_testing"
+    : null;
+var databaseConnections = PostgresConnectionStringResolver.Resolve(builder.Configuration, testingFallback);
 
 builder.Services.AddDbContext<MealSealDbContext>(options =>
-    options.UseNpgsql(connectionString ?? "Host=localhost;Database=mealseal_testing"));
+    options.UseNpgsql(databaseConnections.Application));
 builder.Services.AddSingleton<IFirebaseTokenVerifier, FirebaseTokenVerifier>();
 builder.Services.AddScoped<VoucherCryptoService>();
 builder.Services.AddScoped<VoucherService>();
@@ -74,9 +75,15 @@ app.MapMealSealEndpoints();
 
 if (!app.Environment.IsEnvironment("Testing"))
 {
+    var migrationOptions = new DbContextOptionsBuilder<MealSealDbContext>()
+        .UseNpgsql(databaseConnections.Migration)
+        .Options;
+    await using (var migrationDb = new MealSealDbContext(migrationOptions))
+    {
+        await migrationDb.Database.MigrateAsync();
+    }
+
     await using var scope = app.Services.CreateAsyncScope();
-    var db = scope.ServiceProvider.GetRequiredService<MealSealDbContext>();
-    await db.Database.MigrateAsync();
     await DatabaseSeeder.SeedAsync(scope.ServiceProvider);
 }
 

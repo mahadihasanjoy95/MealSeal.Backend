@@ -13,10 +13,13 @@ public sealed class MealSealDbContext(DbContextOptions<MealSealDbContext> option
         modelBuilder.Entity<UserProfile>(entity =>
         {
             entity.ToTable("users");
-            entity.HasKey(x => x.FirebaseUid);
-            entity.Property(x => x.FirebaseUid).HasMaxLength(128);
+            entity.HasKey(x => x.UserId);
+            entity.Property(x => x.UserId).HasMaxLength(36);
+            entity.Property(x => x.Email).HasMaxLength(256);
+            entity.Property(x => x.PasswordHash).HasMaxLength(512);
             entity.Property(x => x.Role).HasMaxLength(32);
             entity.Property(x => x.RestaurantId).HasMaxLength(128);
+            entity.HasIndex(x => x.Email).IsUnique();
         });
         modelBuilder.Entity<VoucherRecord>(entity =>
         {
@@ -49,7 +52,9 @@ public sealed class MealSealDbContext(DbContextOptions<MealSealDbContext> option
 
 public sealed class UserProfile
 {
-    public required string FirebaseUid { get; set; }
+    public required string UserId { get; set; }
+    public required string Email { get; set; }
+    public required string PasswordHash { get; set; }
     public required string Role { get; set; }
     public string? RestaurantId { get; set; }
     public bool Active { get; set; } = true;

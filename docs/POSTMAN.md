@@ -7,11 +7,10 @@ Import `docs/MealSeal.postman_collection.json` into Postman. Open the collection
 | Variable | Value |
 |---|---|
 | `baseUrl` | `https://mealseal-api.onrender.com` |
-| `firebaseApiKey` | Firebase Console → Project settings → General → Web API Key |
-| `adminEmail` / `adminPassword` | Firebase charity-admin test account |
-| `staffEmail` / `staffPassword` | Firebase restaurant-staff test account |
+| `adminEmail` / `adminPassword` | A MealSeal charity-admin account (the seeded bootstrap admin, or one created via `POST /auth/users`) |
+| `staffEmail` / `staffPassword` | A MealSeal restaurant-staff account |
 
-Never commit or share the passwords, Firebase ID tokens, service-account JSON, database URL, or signing private key. The collection deliberately contains no credentials.
+Never commit or share passwords, access tokens, the database URL, or signing private keys. The collection deliberately contains no credentials.
 
 ## Recommended test order
 
@@ -24,17 +23,17 @@ Never commit or share the passwords, Firebase ID tokens, service-account JSON, d
 7. Run **Staff vouchers → Redeem voucher** once; it should succeed.
 8. Run it a second time; it should return `409 ALREADY_REDEEMED`.
 
-Firebase ID tokens expire. Rerun the appropriate sign-in request when a protected request returns `401`.
+Access tokens expire (`Auth__AccessTokenLifetimeMinutes`, 12h by default). Rerun the appropriate sign-in request when a protected request returns `401`.
 
 ## Swagger UI
 
 Open `https://mealseal-api.onrender.com/swagger`.
 
-Swagger does not collect Firebase email/password credentials. To call protected endpoints:
+Swagger does not collect email/password credentials directly. To call protected endpoints:
 
-1. Run a Firebase sign-in request in Postman.
-2. Copy the `idToken` from its JSON response.
+1. Run `POST /auth/login` (in Postman or directly in Swagger's "Try it out").
+2. Copy the `accessToken` from its JSON response.
 3. In Swagger, click **Authorize** and paste only the token. Do not type `Bearer` because Swagger adds it.
-4. Admin tokens can call admin voucher routes; staff tokens can call verify/redeem routes.
+4. Admin tokens can call admin voucher routes and `/auth/users`; staff tokens can call verify/redeem routes.
 
 The public `/health` and `/public-key` routes do not require authorization.

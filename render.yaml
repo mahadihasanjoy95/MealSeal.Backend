@@ -16,17 +16,21 @@ services:
         sync: false
       - key: DATABASE_URL_UNPOOLED
         sync: false
-      - key: Firebase__ProjectId
-        value: mealseal-c49a9
-      - key: Firebase__ServiceAccountJson
-        sync: false
       - key: MealSeal__PrivateKeyPem
         sync: false
       - key: MealSeal__PublicKeyPem
         sync: false
-      - key: Seed__AdminUid
+      - key: Auth__PrivateKeyPem
         sync: false
-      - key: Seed__StaffUid
+      - key: Auth__PublicKeyPem
+        sync: false
+      - key: Seed__AdminEmail
+        sync: false
+      - key: Seed__AdminPassword
+        sync: false
+      - key: Seed__StaffEmail
+        sync: false
+      - key: Seed__StaffPassword
         sync: false
       - key: Seed__StaffRestaurantId
         sync: false

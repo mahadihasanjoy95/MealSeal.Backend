@@ -4,19 +4,22 @@ ASP.NET Core 10 API for cryptographically signed, single-use meal vouchers. It r
 
 ## Architecture
 
-- **Firebase Authentication remains**: the mobile app already signs in with Firebase and sends an ID token. The API verifies it with Firebase Admin.
-- **PostgreSQL replaces Firestore for API data**: users/roles, vouchers, redemption and revocation state, and audit events are stored in PostgreSQL.
+- **MealSeal owns authentication**: email/password accounts live in this API's own PostgreSQL `users` table (PBKDF2-HMAC-SHA256 password hashing). Sign-in (`POST /auth/login`) issues a short-lived ES256-signed access token (JWT) — its own signing key, separate from the voucher-signing key below — which the mobile app then sends as a bearer token.
+- **PostgreSQL for all API data**: users/roles, vouchers, redemption and revocation state, and audit events are stored in PostgreSQL.
 - **ES256 voucher signatures**: ECDSA P-256 + SHA-256, using the same fixed payload order and DER/base64url signature format as the former Node backend.
 - **One-time redemption**: a conditional database update makes concurrent or replayed redemption attempts fail.
-- **No mobile code is changed by this backend project.**
+- **No public self-registration**: only a `CHARITY_ADMIN` can create further `CHARITY_ADMIN`/`RESTAURANT_STAFF` accounts (`POST /auth/users`) or reset a password (`POST /auth/users/{userId}/reset-password`); the very first admin comes from `Seed__AdminEmail`/`Seed__AdminPassword` at startup.
 
-## API surface (11 endpoints)
+## API surface
 
 | Method | Route | Access | Purpose |
 |---|---|---|---|
 | GET | `/health` | Public | API and database health |
-| GET | `/public-key` | Public | ES256 verification key |
+| GET | `/public-key` | Public | ES256 voucher-verification key |
+| POST | `/auth/login` | Public | Sign in, receive an access token |
 | GET | `/auth/me` | Signed-in user | Current API role/profile |
+| POST | `/auth/users` | Charity admin | Create an admin or staff account |
+| POST | `/auth/users/{userId}/reset-password` | Charity admin | Set a new password for an account |
 | POST | `/vouchers/create` | Charity admin | Issue and sign voucher |
 | GET | `/vouchers` | Charity admin | List vouchers |
 | GET | `/vouchers/{id}` | Charity admin | Voucher status/details |
@@ -26,60 +29,59 @@ ASP.NET Core 10 API for cryptographically signed, single-use meal vouchers. It r
 | POST | `/vouchers/verify` | Restaurant staff | Verify signature, restaurant, expiry, and state |
 | POST | `/vouchers/redeem` | Restaurant staff | Atomically redeem once |
 
-The five routes already called by the mobile app (`create`, `list`, `signed`, `verify`, and `redeem`) retain its expected response shape.
+The mobile app's voucher routes (`create`, `list`, `signed`, `verify`, `redeem`) retain their existing response shape; only the identity layer changed.
 
 ## Interactive API testing
 
 - Local Swagger UI: `http://localhost:5203/swagger`
 - Deployed Swagger UI: `https://mealseal-api.onrender.com/swagger`
-- Import `docs/MealSeal.postman_collection.json` into Postman for Firebase sign-in and the complete admin/staff voucher workflow.
+- Import `docs/MealSeal.postman_collection.json` into Postman for sign-in and the complete admin/staff voucher workflow.
 - See `docs/POSTMAN.md` for setup and the recommended test order.
 
-Protected endpoints use a short-lived Firebase ID token. Swagger's **Authorize** dialog expects only the token and adds the `Bearer` prefix. The repository and Postman collection intentionally contain no test passwords, Firebase tokens, service-account credentials, database URLs, or private signing keys.
+Protected endpoints use a short-lived MealSeal access token from `POST /auth/login`. Swagger's **Authorize** dialog expects only the token and adds the `Bearer` prefix. The repository and Postman collection intentionally contain no test passwords, access tokens, database URLs, or private signing keys.
 
 ## Local setup
 
 Requirements: .NET 10 SDK, PostgreSQL, and either JetBrains Rider or VS Code with C# Dev Kit.
 
 1. Copy `.env.example` values into Rider Run Configuration environment variables (or export them in your shell).
-2. In Firebase Console, create/download a service-account key. Never commit it. Set `Firebase__ServiceAccountPath` locally, or `Firebase__ServiceAccountJson` in hosting.
-3. Copy the existing admin and staff Firebase UIDs into `Seed__AdminUid` and `Seed__StaffUid`; set the staff restaurant ID. The client still needs its existing Firestore `users/{uid}` role document for login routing during this backend-only phase.
-4. Generate signing keys once:
+2. Pick a bootstrap admin (and optional staff) email/password in `Seed__AdminEmail`/`Seed__AdminPassword` (and `Seed__StaffEmail`/`Seed__StaffPassword`/`Seed__StaffRestaurantId`) — these are hashed into the database on first startup. Change the password afterward via `POST /auth/users/{userId}/reset-password`, signed in as that admin.
+3. Generate signing keys once (both the voucher-signing pair and the separate access-token-signing pair):
 
    ```sh
    dotnet run --project MealSeal.Api -- --generate-keys
    ```
 
-   Back up both files securely. Losing or changing the key invalidates issued QR vouchers. Existing vouchers can only be retained if their original private/public PEM key pair is reused.
+   Back up all four files securely. Losing or changing the voucher key invalidates issued QR vouchers; losing or changing the auth key invalidates every signed-in session (everyone just signs in again — no other data is affected).
 
-5. Start the API:
+4. Start the API:
 
    ```sh
    dotnet run --project MealSeal.Api
    ```
 
-The initial EF Core migration runs automatically. Try requests with `MealSeal.Api/MealSeal.Api.http` in Rider.
+The EF Core migrations run automatically on startup. Try requests with `MealSeal.Api/MealSeal.Api.http` in Rider.
 
 Run verification with `dotnet test MealSeal.Backend.sln`.
 
 ## Free deployment: Neon + Render
 
-1. Use the linked Neon project `MealSeal` (`muddy-feather-76535250`). Its `main` branch already contains the initial schema.
+1. Use the linked Neon project `MealSeal` (`muddy-feather-76535250`). Its `main` branch already contains the schema; EF Core's auto-migration-on-startup applies any new migrations on next deploy.
 2. Push this backend repository to GitHub.
 3. In Render, create a Blueprint from the repository. `render.yaml` defines a free Docker web service.
 4. Enter the secret environment variables requested by Render:
    - `DATABASE_URL`: Neon's pooled URL (hostname contains `-pooler`) for normal API traffic.
    - `DATABASE_URL_UNPOOLED`: Neon's direct URL for EF Core migrations.
-   - `Firebase__ServiceAccountJson`: complete Firebase service-account JSON.
-   - `MealSeal__PrivateKeyPem` and `MealSeal__PublicKeyPem`: generated PEM values.
-   - The three `Seed__...` user/restaurant values.
+   - `MealSeal__PrivateKeyPem` and `MealSeal__PublicKeyPem`: generated voucher-signing PEM values.
+   - `Auth__PrivateKeyPem` and `Auth__PublicKeyPem`: generated access-token-signing PEM values.
+   - The `Seed__...` bootstrap admin/staff values.
 5. Confirm `https://YOUR-SERVICE.onrender.com/health` returns `status: ok`.
 
 The API accepts Neon's native `postgresql://` URLs and converts them to Npgsql configuration internally. It also continues to accept `ConnectionStrings__Postgres` and `ConnectionStrings__PostgresMigration` in Npgsql keyword format. Never commit any of these values.
 
 Render's free web service sleeps after inactivity, so the first request can be slow. Neon is preferable to Render's free PostgreSQL because Render's free database expires after 30 days. Do not use SQLite on Render: its filesystem is ephemeral.
 
-Only after deployment should the separate mobile phase replace `API_BASE_URL` with the Render HTTPS URL. Never put Firebase service-account JSON or private signing keys in the mobile app.
+Only after deployment should the separate mobile phase replace `API_BASE_URL` with the Render HTTPS URL. Never put private signing keys in the mobile app.
 
 ## iOS and Android testing choices
 
@@ -93,9 +95,12 @@ For phone testing, the hosted HTTPS API is easiest. For a local API, the phone a
 
 ## Security notes
 
-- Firebase ID tokens are verified with revocation checking.
+- Passwords are hashed with PBKDF2-HMAC-SHA256 (ASP.NET Core's `PasswordHasher`), never stored or logged in plain text.
+- Access tokens are ES256-signed JWTs with a short lifetime; they carry only the user's ID — role and restaurant assignment are re-read from the database on every request, so deactivating a user takes effect immediately.
+- The access-token signing key is separate from the voucher-signing key (separation of duties).
+- `POST /auth/login` has its own, stricter per-IP rate limit to slow down password guessing.
 - Authorization is server-side (`CHARITY_ADMIN` or `RESTAURANT_STAFF`), never trusted from QR input.
 - Staff can verify/redeem only vouchers for their assigned restaurant.
 - Signed payloads are compared with the immutable database record.
 - Request size and rate limits are enabled; errors do not return stack traces.
-- Private keys and service-account credentials are excluded by `.gitignore`.
+- Private keys are excluded by `.gitignore`.

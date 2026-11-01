@@ -15,13 +15,16 @@ var builder = WebApplication.CreateBuilder(args);
 
 if (args.Contains("--generate-keys", StringComparer.Ordinal))
 {
-    VoucherCryptoService.GenerateKeys(Path.Combine(builder.Environment.ContentRootPath, "keys"));
-    Console.WriteLine("Generated keys/private-key.pem and keys/public-key.pem.");
+    var keysDir = Path.Combine(builder.Environment.ContentRootPath, "keys");
+    VoucherCryptoService.GenerateKeys(keysDir);
+    Console.WriteLine("Generated keys/private-key.pem and keys/public-key.pem (voucher signing).");
+    AuthTokenService.GenerateKeys(keysDir);
+    Console.WriteLine("Generated keys/auth-private-key.pem and keys/auth-public-key.pem (access tokens).");
     return;
 }
 
 builder.Services.Configure<MealSealOptions>(builder.Configuration.GetSection("MealSeal"));
-builder.Services.Configure<FirebaseOptions>(builder.Configuration.GetSection("Firebase"));
+builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection("Seed"));
 
 var testingFallback = builder.Environment.IsEnvironment("Testing")
@@ -31,11 +34,14 @@ var databaseConnections = PostgresConnectionStringResolver.Resolve(builder.Confi
 
 builder.Services.AddDbContext<MealSealDbContext>(options =>
     options.UseNpgsql(databaseConnections.Application));
-builder.Services.AddSingleton<IFirebaseTokenVerifier, FirebaseTokenVerifier>();
+// Scoped (one ECDsa instance per request), matching VoucherCryptoService below — ECDsa isn't
+// guaranteed safe for concurrent use across requests from a single shared instance.
+builder.Services.AddScoped<AuthTokenService>();
+builder.Services.AddSingleton<PasswordService>();
 builder.Services.AddScoped<VoucherCryptoService>();
 builder.Services.AddScoped<VoucherService>();
-builder.Services.AddAuthentication("Firebase")
-    .AddScheme<AuthenticationSchemeOptions, FirebaseAuthenticationHandler>("Firebase", _ => { });
+builder.Services.AddAuthentication("MealSeal")
+    .AddScheme<AuthenticationSchemeOptions, AccessTokenAuthenticationHandler>("MealSeal", _ => { });
 builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -44,16 +50,16 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "MealSeal API",
         Version = "v1",
-        Description = "Cryptographically signed, single-use meal vouchers. Protected operations require a Firebase ID token."
+        Description = "Cryptographically signed, single-use meal vouchers. Protected operations require a MealSeal access token from POST /auth/login."
     });
-    options.AddSecurityDefinition("FirebaseBearer", new OpenApiSecurityScheme
+    options.AddSecurityDefinition("MealSealBearer", new OpenApiSecurityScheme
     {
         Type = SecuritySchemeType.Http,
         Scheme = "bearer",
-        BearerFormat = "Firebase ID token",
-        Description = "Paste only the Firebase ID token. Swagger adds the 'Bearer' prefix automatically."
+        BearerFormat = "MealSeal access token (JWT)",
+        Description = "Paste only the access token returned by POST /auth/login. Swagger adds the 'Bearer' prefix automatically."
     });
-    options.OperationFilter<FirebaseSecurityOperationFilter>();
+    options.OperationFilter<BearerSecurityOperationFilter>();
 });
 
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
@@ -70,6 +76,16 @@ builder.Services.AddRateLimiter(options =>
         _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 120,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+    // Tighter limit on login specifically, keyed by IP (there's no authenticated user yet), to
+    // slow down password-guessing.
+    options.AddPolicy("login", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));

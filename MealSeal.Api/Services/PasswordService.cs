@@ -1,16 +1,22 @@
 using MealSeal.Api.Data;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
 
 namespace MealSeal.Api.Services;
 
 /// <summary>
-/// Thin wrapper around ASP.NET Core's <see cref="PasswordHasher{TUser}"/> (PBKDF2-HMAC-SHA256
-/// with a random salt per password, in its versioned/self-describing format) so the rest of the
-/// app never touches raw password bytes.
+/// SECURITY: Passwords are never stored directly. New password records use ASP.NET Core Identity
+/// V3's versioned format: PBKDF2-HMAC-SHA512, a cryptographically random 128-bit salt, a 256-bit
+/// derived subkey, and 100,000 iterations. The salt and work-factor metadata are stored inside the
+/// encoded hash so verification does not require a separate salt column.
 /// </summary>
 public sealed class PasswordService
 {
-    private readonly PasswordHasher<UserProfile> _hasher = new();
+    private readonly PasswordHasher<UserProfile> _hasher = new(Options.Create(new PasswordHasherOptions
+    {
+        CompatibilityMode = PasswordHasherCompatibilityMode.IdentityV3,
+        IterationCount = 100_000
+    }));
 
     public string Hash(UserProfile user, string password) => _hasher.HashPassword(user, password);
 

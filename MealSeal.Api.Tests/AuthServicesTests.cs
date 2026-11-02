@@ -42,7 +42,7 @@ public sealed class AuthServicesTests
             PublicKeyPem = key.ExportSubjectPublicKeyInfoPem()
         });
 
-        using var tokens = new AuthTokenService(options, new TestEnvironment());
+        var tokens = new AuthTokenService(options, new TestEnvironment());
         var user = new UserProfile
         {
             UserId = "user-42",
@@ -76,8 +76,8 @@ public sealed class AuthServicesTests
             PublicKeyPem = key2.ExportSubjectPublicKeyInfoPem()
         });
 
-        using var issuer = new AuthTokenService(issuerOptions, new TestEnvironment());
-        using var verifier = new AuthTokenService(verifierOptions, new TestEnvironment());
+        var issuer = new AuthTokenService(issuerOptions, new TestEnvironment());
+        var verifier = new AuthTokenService(verifierOptions, new TestEnvironment());
 
         var token = issuer.IssueAccessToken(new UserProfile
         {

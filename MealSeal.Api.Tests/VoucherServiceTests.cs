@@ -85,6 +85,53 @@ public sealed class VoucherServiceTests : IAsyncLifetime
         Assert.Equal("REVOKED", rejected.Code);
     }
 
+    [Fact]
+    public async Task Voucher_RejectsEveryChangedSignedField_AndChangedSignature()
+    {
+        var expiry = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)).ToString("yyyy-MM-dd");
+        var signed = await _service.CreateAsync(
+            new CreateVoucherRequest("recipient-42", "restaurant-1", "Lunch", 2, expiry), "admin-uid", default);
+
+        var changedSignature = signed.Signature[..^1] + (signed.Signature[^1] == 'A' ? "B" : "A");
+        SignedVoucher[] tamperedVouchers =
+        [
+            signed with { Payload = signed.Payload with { VoucherId = Guid.NewGuid().ToString() } },
+            signed with { Payload = signed.Payload with { RecipientRef = "recipient-99" } },
+            signed with { Payload = signed.Payload with { RestaurantId = "restaurant-2" } },
+            signed with { Payload = signed.Payload with { MealType = "Dinner" } },
+            signed with { Payload = signed.Payload with { Quantity = 19 } },
+            signed with { Payload = signed.Payload with { IssuedAt = signed.Payload.IssuedAt + 1 } },
+            signed with { Payload = signed.Payload with { ExpiresAt = signed.Payload.ExpiresAt + 1 } },
+            signed with { Payload = signed.Payload with { IssuerUid = "attacker" } },
+            signed with { Signature = changedSignature },
+            signed with { Algorithm = "none" },
+            signed with { KeyId = "attacker-key" }
+        ];
+
+        foreach (var tampered in tamperedVouchers)
+        {
+            var rejected = await Assert.ThrowsAsync<ApiException>(() =>
+                _service.VerifyAsync(tampered, "restaurant-1", default));
+            Assert.Equal("INVALID_SIGNATURE", rejected.Code);
+        }
+    }
+
+    [Fact]
+    public async Task Voucher_RejectsAnIssuedRecordWithAnInconsistentStoredHash()
+    {
+        var expiry = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)).ToString("yyyy-MM-dd");
+        var signed = await _service.CreateAsync(
+            new CreateVoucherRequest("recipient-42", "restaurant-1", "Lunch", 2, expiry), "admin-uid", default);
+
+        var stored = await _db.Vouchers.SingleAsync(x => x.VoucherId == signed.Payload.VoucherId);
+        stored.PayloadSha256 = new string('0', 64);
+        await _db.SaveChangesAsync();
+
+        var rejected = await Assert.ThrowsAsync<ApiException>(() =>
+            _service.VerifyAsync(signed, "restaurant-1", default));
+        Assert.Equal("INVALID_VOUCHER", rejected.Code);
+    }
+
     private sealed class TestEnvironment : IWebHostEnvironment
     {
         public string ApplicationName { get; set; } = "MealSeal.Api.Tests";

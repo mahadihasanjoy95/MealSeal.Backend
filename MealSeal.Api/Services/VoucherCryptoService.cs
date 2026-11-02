@@ -7,6 +7,13 @@ using Microsoft.Extensions.Options;
 
 namespace MealSeal.Api.Services;
 
+/// <summary>
+/// SECURITY BOUNDARY: Creates and verifies the digital signature carried inside every MealSeal QR.
+/// The QR data is not trusted merely because it can be scanned. ECDSA P-256 signs the exact UTF-8
+/// bytes produced by <see cref="SerializePayload"/> using SHA-256. If any signed field is changed
+/// after issue (recipient, café, meal, quantity, timestamps or issuer), verification fails because
+/// the attacker cannot create a matching signature without the private key.
+/// </summary>
 public sealed class VoucherCryptoService : IDisposable
 {
     private readonly ECDsa _privateKey = ECDsa.Create();
@@ -24,11 +31,17 @@ public sealed class VoucherCryptoService : IDisposable
 
     public SignedVoucher Sign(VoucherPayload payload)
     {
+        // Only the backend receives the private key. The mobile app and the QR code receive the
+        // signature, never the key that could create a new valid voucher.
         var bytes = SerializePayload(payload);
         var signature = _privateKey.SignData(bytes, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
         return new SignedVoucher(payload, Base64UrlEncode(signature), _options.Algorithm, _options.KeyId);
     }
 
+    /// <summary>
+    /// Authenticates a scanned voucher. False means the payload/signature is corrupted, was
+    /// modified, uses an unsupported algorithm, or was signed by an unrecognised key.
+    /// </summary>
     public bool Verify(SignedVoucher voucher)
     {
         if (voucher.Algorithm != _options.Algorithm || voucher.KeyId != _options.KeyId) return false;
@@ -53,6 +66,9 @@ public sealed class VoucherCryptoService : IDisposable
 
     public static byte[] SerializePayload(VoucherPayload payload)
     {
+        // Cryptographic signatures operate on bytes, not abstract JSON objects. Writing every
+        // field in a fixed order produces one canonical byte representation and prevents property
+        // ordering or formatting differences from changing what is signed and verified.
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions
                { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping }))

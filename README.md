@@ -34,7 +34,7 @@ The mobile app's voucher routes (`create`, `list`, `signed`, `verify`, `redeem`)
 ## Interactive API testing
 
 - Local Swagger UI: `http://localhost:5203/swagger`
-- Deployed Swagger UI: `https://mealseal-api.onrender.com/swagger`
+- Deployed Swagger UI: `https://mealseal-api-349396488653.australia-southeast1.run.app/swagger`
 - Import `docs/MealSeal.postman_collection.json` into Postman for sign-in and the complete admin/staff voucher workflow.
 - See `docs/POSTMAN.md` for setup and the recommended test order.
 
@@ -64,24 +64,34 @@ The EF Core migrations run automatically on startup. Try requests with `MealSeal
 
 Run verification with `dotnet test MealSeal.Backend.sln`.
 
-## Free deployment: Neon + Render
+## Deployment: Neon + Google Cloud Run
+
+The API is deployed as a container on **Google Cloud Run** (project `mealseal`, region `australia-southeast1`), built via **Cloud Build** and pushed to **Artifact Registry**. All secrets live in **Secret Manager**, not in environment files or source control. (Render was used early on; it's no longer part of the deployment — its free tier slept after inactivity and its free Postgres expired after 30 days, neither of which Cloud Run/Neon have.)
 
 1. Use the linked Neon project `MealSeal` (`muddy-feather-76535250`). Its `main` branch already contains the schema; EF Core's auto-migration-on-startup applies any new migrations on next deploy.
-2. Push this backend repository to GitHub.
-3. In Render, create a Blueprint from the repository. `render.yaml` defines a free Docker web service.
-4. Enter the secret environment variables requested by Render:
-   - `DATABASE_URL`: Neon's pooled URL (hostname contains `-pooler`) for normal API traffic.
-   - `DATABASE_URL_UNPOOLED`: Neon's direct URL for EF Core migrations.
-   - `MealSeal__PrivateKeyPem` and `MealSeal__PublicKeyPem`: generated voucher-signing PEM values.
-   - `Auth__PrivateKeyPem` and `Auth__PublicKeyPem`: generated access-token-signing PEM values.
-   - The `Seed__...` bootstrap admin/staff values.
-5. Confirm `https://YOUR-SERVICE.onrender.com/health` returns `status: ok`.
+2. One-time setup (already done for this project, kept here for a fresh environment):
+   - `gcloud artifacts repositories create mealseal --repository-format=docker --location=australia-southeast1`
+   - Create one Secret Manager secret per sensitive value, each holding the raw value as its `latest` version: `mealseal-auth-private-key`, `mealseal-auth-public-key`, `mealseal-voucher-private-key`, `mealseal-voucher-public-key`, `mealseal-database-url` (Neon's pooled URL), `mealseal-database-url-unpooled` (Neon's direct URL), `mealseal-seed-admin-password`, `mealseal-seed-staff-password`.
+3. Build, test and push a new image — `cloudbuild.yaml` runs the full `dotnet test` suite as a gate before the image is built, so a broken test blocks the deploy:
+
+   ```sh
+   gcloud builds submit --config cloudbuild.yaml --project mealseal .
+   ```
+
+4. Deploy the new image to the existing Cloud Run service:
+
+   ```sh
+   gcloud run deploy mealseal-api \
+     --image australia-southeast1-docker.pkg.dev/mealseal/mealseal/mealseal-api:latest \
+     --region australia-southeast1 --project mealseal
+   ```
+
+   This reuses the service's existing env vars/secret bindings (`ASPNETCORE_ENVIRONMENT`, `Seed__AdminEmail`, the `AllowedOrigins__N` list, and the eight secrets above wired as `valueFrom.secretKeyRef`) — only the container image changes. To add or change an env var without rebuilding, use `gcloud run services update mealseal-api --region australia-southeast1 --update-env-vars KEY=value`.
+5. Confirm `https://mealseal-api-349396488653.australia-southeast1.run.app/health` returns `status: ok`.
 
 The API accepts Neon's native `postgresql://` URLs and converts them to Npgsql configuration internally. It also continues to accept `ConnectionStrings__Postgres` and `ConnectionStrings__PostgresMigration` in Npgsql keyword format. Never commit any of these values.
 
-Render's free web service sleeps after inactivity, so the first request can be slow. Neon is preferable to Render's free PostgreSQL because Render's free database expires after 30 days. Do not use SQLite on Render: its filesystem is ephemeral.
-
-Only after deployment should the separate mobile phase replace `API_BASE_URL` with the Render HTTPS URL. Never put private signing keys in the mobile app.
+Only after deployment should the separate mobile phase replace `API_BASE_URL` with the Cloud Run HTTPS URL. Never put private signing keys in the mobile app.
 
 ## iOS and Android testing choices
 

@@ -1,4 +1,10 @@
 steps:
+  # Security regression gate: compile and run the .NET 10 test suite before an image can be built.
+  # This includes QR-field/signature tampering, stored-hash mismatch, replay and revocation tests.
+  - name: "mcr.microsoft.com/dotnet/sdk:10.0"
+    entrypoint: "dotnet"
+    args: ["test", "MealSeal.Backend.sln", "--configuration", "Release", "--nologo"]
+
   - name: "gcr.io/cloud-builders/docker"
     args:
       [

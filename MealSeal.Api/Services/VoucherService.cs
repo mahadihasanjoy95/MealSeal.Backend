@@ -12,6 +12,11 @@ public sealed partial class VoucherService(MealSealDbContext db, VoucherCryptoSe
 {
     private static readonly HashSet<string> MealTypes = ["Breakfast", "Lunch", "Dinner"];
 
+    // Cafés and charities using MealSeal today are NZ-based — an expiry date picked as "9 Nov" must
+    // actually lapse at the end of 9 Nov in NZ time. Converting the calendar date straight to UTC
+    // midnight (the previous behaviour) leaves the voucher usable until ~1pm NZDT the following day.
+    private static readonly TimeZoneInfo BusinessTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific/Auckland");
+
     public async Task<SignedVoucher> CreateAsync(CreateVoucherRequest request, string actorUid, CancellationToken cancellationToken)
     {
         ValidateText(request.RecipientRef, nameof(request.RecipientRef), 120);
@@ -24,8 +29,9 @@ public sealed partial class VoucherService(MealSealDbContext db, VoucherCryptoSe
                 DateTimeStyles.None, out var expiryDate))
             throw new ApiException(400, "INVALID_EXPIRY", "Expiry date must use YYYY-MM-DD.");
 
-        var expiresAt = new DateTimeOffset(expiryDate.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)
-            .ToUnixTimeMilliseconds();
+        var localEndOfDay = DateTime.SpecifyKind(expiryDate.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
+        var expiresAtUtc = TimeZoneInfo.ConvertTimeToUtc(localEndOfDay, BusinessTimeZone);
+        var expiresAt = new DateTimeOffset(expiresAtUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         if (expiresAt <= now) throw new ApiException(400, "INVALID_EXPIRY", "Expiry date must be today or later.");
 
@@ -97,12 +103,20 @@ public sealed partial class VoucherService(MealSealDbContext db, VoucherCryptoSe
     {
         if (signed.Payload is null || signed.Payload.Version != 1 || string.IsNullOrWhiteSpace(signed.Payload.VoucherId))
             throw new ApiException(400, "INVALID_VOUCHER", "The voucher structure is invalid.");
+
+        // FRAUD/TAMPER CHECK 1: Recalculate the SHA-256 digest of the scanned payload and verify its
+        // ECDSA signature with the public key. Editing even one protected QR field makes this fail.
         if (!crypto.Verify(signed))
-            throw new ApiException(400, "INVALID_SIGNATURE", "The voucher signature is invalid.");
+            throw new ApiException(400, "INVALID_SIGNATURE",
+                "Cryptographic verification failed. The signed QR data or signature may have been changed.");
 
         var record = await db.Vouchers.AsNoTracking()
                          .SingleOrDefaultAsync(x => x.VoucherId == signed.Payload.VoucherId, cancellationToken)
                      ?? throw new ApiException(404, "NOT_FOUND", "Voucher was not found.");
+
+        // FRAUD/TAMPER CHECK 2: A valid signature is also compared with the authoritative issue
+        // record. The canonical JSON, stored SHA-256 digest, signature, algorithm and key ID must
+        // all match; a substituted or inconsistent database/QR record is therefore rejected.
         if (!CryptographicallyMatches(record, signed))
             throw new ApiException(400, "INVALID_VOUCHER", "The voucher does not match the issued record.");
         if (!string.Equals(record.RestaurantId, restaurantId, StringComparison.Ordinal))
@@ -117,6 +131,10 @@ public sealed partial class VoucherService(MealSealDbContext db, VoucherCryptoSe
         await VerifyAsync(signed, restaurantId, cancellationToken);
         var now = DateTimeOffset.UtcNow;
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        // REPLAY/DOUBLE-SPEND CHECK: This is a single conditional database update, not a separate
+        // read followed by a write. Under concurrent scans, only one request can change ACTIVE to
+        // REDEEMED; every later or competing request observes affected == 0 and is rejected.
         var affected = await db.Vouchers
             .Where(x => x.VoucherId == signed.Payload.VoucherId && x.Status == "ACTIVE" &&
                         x.ExpiresAt > now.ToUnixTimeMilliseconds() && x.Signature == signed.Signature)
